@@ -88,8 +88,8 @@ app.post('/', function(req, res, next) {
         //carousel.addButton("Read Article", url);
         // Respond to the user with the current temperature.
         console.log("Response returned: " + JSON.stringify(carousel.get()));
-        assistant.tell(carousel.get());
-        //assistant.tell("Read article here: " + url);
+        //assistant.tell(carousel.get());
+        assistant.tell("Read article here: " + url);
       }
     });
   }
