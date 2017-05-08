@@ -8,10 +8,15 @@ const fbTemplate = require('fb-message-builder');
 const bodyParser = require('body-parser');
 const request = require('request');
 const app = express();
+var apiai = require('apiai');
+// Client access key
+var apiai = apiai('3aedc754d4db4bd48dd123a5ec1106cc');
 
 const Map = require('es6-map');
 const prettyjson = require('prettyjson');
 const toSentence = require('underscore.string/toSentence');
+const FIND_ARTICLES_ACTION = 'findArticles';  // the action name from the API.AI intent
+const PUBLICATION_PARAMETER = 'publication';
 
 app.use(bodyParser.json({type: 'application/json'}));
 
@@ -26,51 +31,46 @@ app.get("/", function (request, response) {
   response.sendFile(__dirname + '/views/index.html');
 });
 
-// Uncomment the below function to check the authenticity of the API.AI requests.
-// See https://docs.api.ai/docs/webhook#section-authentication
-/*app.post('/', function(req, res, next) {
-  // Instantiate a new API.AI assistant object.
-  const assistant = new ApiAiAssistant({request: req, response: res});
-  
-  // Throw an error if the request is not valid.
-  if(assistant.isRequestFromApiAi(process.env.API_AI_SECRET_HEADER_KEY, 
-                                  process.env.API_AI_SECRET_HEADER_VALUE)) {
-    next();
-  } else {
-    console.log('Request failed validation - req.headers:', JSON.stringify(req.headers, null, 2));
-    
-    res.status(400).send('Invalid request');
-  }
-});*/
 
 // Handle webhook requests
 app.post('/', function(req, res, next) {
-  // Log the request headers and body, to aide in debugging. You'll be able to view the
-  // webhook requests coming from API.AI by clicking the Logs button the sidebar.
-  logObject('Request headers: ', req.headers);
-  logObject('Request body: ', req.body);
-    
-  // Instantiate a new API.AI assistant object.
-  const assistant = new ApiAiAssistant({request: req, response: res});
+    // Log the request headers and body, to aide in debugging. You'll be able to view the
+    // webhook requests coming from API.AI by clicking the Logs button the sidebar.
+    logObject('Request headers: ', req.headers);
+    logObject('Request body: ', req.body);
 
-  // Declare constants for your action and parameter names
-  const FIND_ARTICLES_ACTION = 'findArticles';  // the action name from the API.AI intent
-  const PUBLICATION_PARAMETER = 'publication';
+    // Instantiate a new API.AI assistant object.
+    //const assistant = new ApiAiAssistant({request: req, response: res});
+
+    var request = apiai.textRequest(req.text, {sessionId: req.sender});
+
+    request.on('response', function (response) {
+        var result = response.result;
+        var action = result.action;
+        if (action === FIND_ARTICLES_ACTION && result.publication === undefined) {
+            return findArticles(response);
+        }
+        // Any other action including input.unknown and smalltalk
+        return new fbTemplate.Text(response.result.fulfillment.speech).get();
+    });
+
+    request.on('error', function(error) {
+        console.log(error);
+    })
+    // Declare constants for your action and parameter names
+});
 
   // Create functions to handle intents here
-  function findArticles(assistant) {
+  function findArticles(response) {
     console.log('Handling action: ' + FIND_ARTICLES_ACTION);
-    let publication = assistant.getArgument(PUBLICATION_PARAMETER);
+    var result = response.result;
+    var publication = result.publication;
     
-    // Make an API call to fetch the current weather in the requested city.
-    // See https://developer.yahoo.com/weather/
-    let articlesRequestURL = "https://newsapi.org/v1/articles?source=" + encodeURIComponent(publication) +
-        "&sortBy=top&apiKey=78eb75ef84b4424d9b549c16570553e3"
-    console.log("URL: " + articlesRequestURL)
+    // Make an API call to fetch the top articles for given publication.
+    var articlesRequestURL = "https://newsapi.org/v1/articles?source=" + encodeURIComponent(publication) +
+        "&sortBy=top&apiKey=78eb75ef84b4424d9b549c16570553e3";
+    console.log("URL: " + articlesRequestURL);
     request(articlesRequestURL, function(error, response) {
-      if(error) {
-        next(error);
-      } else {        
         let body = JSON.parse(response.body);
         logObject('News API call response: ', body);
         
@@ -90,7 +90,6 @@ app.post('/', function(req, res, next) {
         console.log("Response returned: " + JSON.stringify(carousel.get()));
         //assistant.tell(carousel.get());
         assistant.tell("Read article here: " + url);
-      }
     });
   }
   
